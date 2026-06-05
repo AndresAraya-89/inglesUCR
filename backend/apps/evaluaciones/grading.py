@@ -1,13 +1,24 @@
-"""Lógica de calificación.
+"""Lógica de calificación (motor de evaluación automática).
 
 Regla del proyecto (RF-21):
     - Cada pregunta vale `pregunta.puntos` (por defecto 1).
     - La nota del intento es la sumatoria de los `puntos_obtenidos` de sus
       respuestas correctas.
+
+Toda la calificación es server-side: el estudiante nunca recibe la opción
+correcta (ver `OpcionPublicSerializer`), de modo que la evaluación no es
+manipulable desde el cliente.
 """
 from django.db.models import Sum
 
 from .models import Intento, Opcion, Pregunta, Respuesta, TipoPregunta
+
+# Tipos de pregunta cuya corrección depende de elegir una `Opcion`.
+TIPOS_BASADOS_EN_OPCION = {
+    TipoPregunta.MULTIPLE_CHOICE,
+    TipoPregunta.LISTENING,
+    TipoPregunta.MATCHING,
+}
 
 
 def evaluar_respuesta(
@@ -15,18 +26,25 @@ def evaluar_respuesta(
     opcion: Opcion | None = None,
     texto: str = "",
 ) -> tuple[bool, int]:
-    """Devuelve (es_correcta, puntos_obtenidos) para una respuesta."""
+    """Evalúa una respuesta y devuelve ``(es_correcta, puntos_obtenidos)``.
+
+    Una opción solo cuenta si pertenece a la pregunta evaluada; de lo
+    contrario se descarta (evita que el cliente envíe la opción correcta de
+    *otra* pregunta para puntuar indebidamente).
+    """
     es_correcta = False
 
-    if pregunta.tipo in {TipoPregunta.MULTIPLE_CHOICE, TipoPregunta.LISTENING}:
-        es_correcta = bool(opcion and opcion.es_correcta and opcion.pregunta_id == pregunta.id)
+    if pregunta.tipo in TIPOS_BASADOS_EN_OPCION:
+        es_correcta = bool(
+            opcion is not None
+            and opcion.pregunta_id == pregunta.id
+            and opcion.es_correcta
+        )
     elif pregunta.tipo == TipoPregunta.FILL_BLANK:
         correcta = pregunta.opciones.filter(es_correcta=True).first()
         es_correcta = bool(
-            correcta and texto.strip().lower() == correcta.texto.strip().lower()
+            correcta and _normalizar(texto) == _normalizar(correcta.texto)
         )
-    elif pregunta.tipo == TipoPregunta.MATCHING:
-        es_correcta = bool(opcion and opcion.es_correcta)
 
     puntos = pregunta.puntos if es_correcta else 0
     return es_correcta, puntos
@@ -41,3 +59,8 @@ def calcular_puntaje_total(intento: Intento) -> int:
         or 0
     )
     return int(total)
+
+
+def _normalizar(texto: str) -> str:
+    """Normaliza texto para comparación tolerante (fill_blank)."""
+    return " ".join(texto.strip().lower().split())

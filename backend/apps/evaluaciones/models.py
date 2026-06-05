@@ -23,6 +23,7 @@ class Quiz(models.Model):
     class Meta:
         verbose_name = "Quiz"
         verbose_name_plural = "Quizes"
+        ordering = ["id"]
 
     def __str__(self) -> str:
         return f"{self.titulo} ({self.leccion.titulo})"

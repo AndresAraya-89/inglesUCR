@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from apps.usuarios.permissions import EsAdmin
@@ -12,10 +12,13 @@ class ConceptoViewSet(viewsets.ModelViewSet):
 
     - Lectura: cualquier usuario autenticado.
     - Escritura: solo administradores.
+    - Búsqueda por palabra o categoría (RF-09): `?search=...`.
     """
 
     queryset = Concepto.objects.all()
     serializer_class = ConceptoSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["palabra_ingles", "categoria"]
 
     def get_permissions(self):
         if self.action in {"list", "retrieve"}:
